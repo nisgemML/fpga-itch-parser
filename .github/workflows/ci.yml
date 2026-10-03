@@ -23,5 +23,8 @@ jobs:
       - name: smoke test (Icarus Verilog)
         run: make smoke
 
-      - name: differential test vs the real C++ parser (Verilator)
+      - name: differential test vs the real C++ parser -- AddOrder (Verilator)
         run: make diff
+
+      - name: differential test vs the real C++ parser -- OrderDelete (Verilator)
+        run: make diff-delete

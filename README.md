@@ -9,13 +9,16 @@ approximated.
 
 ## Read this before the rest of the README
 
-**What this proves:** a correct, synthesizable RTL implementation of the
-exact wire format this portfolio's real feed handler uses — same byte
-offsets, same big-endian field encoding, same message layout, checked
-field-for-field against 10,003 inputs (10,000 random + 3 explicit
-boundary cases: all-zero fields, all-max-width fields, a representative
-case) run through both the RTL (via Verilator) and the real C++ parser
-in the same process. **0 mismatches.**
+**What this proves:** correct, synthesizable RTL for **two** real, 
+structurally different ITCH message layouts this portfolio's real feed
+handler uses — AddOrder (36 bytes) and OrderDelete (19 bytes, with two
+genuinely unextracted skip-byte fields, matched to the real parser's
+exact behavior, not "improved" on it) — each checked field-for-field
+against 10,003 inputs (10,000 random + 3 explicit boundary cases) run
+through both the RTL (via Verilator) and the real C++ parser in the same
+process. **20,006 total comparisons, 0 mismatches.** Two differently-shaped
+message types means this demonstrates a methodology that generalizes,
+not a single lucky case.
 
 **What this does NOT prove, stated plainly:** this was never synthesized
 onto physical FPGA hardware. No Vivado, no Quartus, no vendor toolchain,
@@ -60,7 +63,19 @@ the same wire protocol.
 $ make diff
 3 explicit edge cases checked
 10000 messages compared, 0 mismatches (RTL simulation vs real C++ parser)
+
+$ make diff-delete
+3 explicit edge cases checked
+10000 messages compared, 0 mismatches (RTL simulation vs real C++ parser)
 ```
+
+The second message type's RTL and test built and passed clean on the
+first real run — worth noting plainly rather than silently: the three
+real bugs in `BUGS_FOUND.md` (a testbench timing bug, Verilator's `-I`
+vs `-CFLAGS`, a missing build directory) were all general lessons from
+building the *first* parser, and applying them correctly the second time
+is a legitimate, honest reason this went smoothly, not evidence nothing
+could have gone wrong.
 
 ## Build & run
 
@@ -68,19 +83,22 @@ Needs `verilator` (5.x+) and `iverilog` (for the smoke test):
 
 ```bash
 sudo apt-get install -y verilator iverilog
-make lint    # verilator --lint-only, 0 warnings
-make smoke   # single-message sanity check via Icarus Verilog
-make diff    # the real differential test above
-make all     # all three
+make lint         # verilator --lint-only, both modules, 0 warnings
+make smoke        # single-message sanity check via Icarus Verilog
+make diff         # AddOrder differential test
+make diff-delete  # OrderDelete differential test
+make all          # all of the above
 ```
 
 ## What's in here
 
 | Path | What it is |
 |---|---|
-| `rtl/itch_add_order_parser.v` | The parser: one byte per clock, `msg_valid` pulses once all 36 bytes of a message are consumed |
-| `sim/smoke_tb.v` | Single hand-encoded message, basic sanity check (Icarus Verilog) |
-| `tests/test_differential.cpp` | The real test: RTL vs the actual C++ reference, 10,003 inputs |
+| `rtl/itch_add_order_parser.v` | AddOrder parser: one byte per clock, `msg_valid` pulses once all 36 bytes are consumed |
+| `rtl/itch_delete_order_parser.v` | OrderDelete parser: same interface convention, 19 bytes, matches the real parser's skip-byte behavior exactly |
+| `sim/smoke_tb.v` | Single hand-encoded AddOrder message, basic sanity check (Icarus Verilog) |
+| `tests/test_differential.cpp` | AddOrder: RTL vs the actual C++ reference, 10,003 inputs |
+| `tests/test_differential_delete.cpp` | OrderDelete: same methodology, 10,003 more inputs |
 | `third_party/udp-multicast-receiver/` | Vendored `wire_format.hpp`, unmodified |
 
 ## Related

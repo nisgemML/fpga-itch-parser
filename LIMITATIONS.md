@@ -3,7 +3,7 @@
 | Area | Current | Not claimed |
 |------|---------|-------------|
 | Verification | Simulated correctness via Verilator and Icarus Verilog; differential-tested against the real C++ production parser across 10,003 inputs, 0 mismatches | Synthesis on real FPGA hardware — no Vivado, Quartus, or physical FPGA board available in this environment |
-| Message coverage | AddOrder (`'A'`/`'F'`) only | Any other ITCH message type (OrderExecuted, OrderCancel, OrderDelete, etc.) — the real C++ parser handles these (see `wire_format.hpp`), the RTL does not yet |
+| Message coverage | AddOrder (`'A'`/`'F'`) and OrderDelete (`'D'`) — two real, differently-shaped layouts (36 bytes vs 19, with/without skip-bytes), same differential-testing methodology for both | OrderExecuted, OrderCancel, and other ITCH message types the real C++ parser handles (see `wire_format.hpp`) — the RTL does not cover these yet |
 | Timing closure | None performed — no synthesis means no place-and-route, no timing report, no clock-frequency claim | Any specific achievable clock frequency on real hardware |
 | Interface | Simple byte-valid/byte-in streaming interface, one byte per clock | Any specific bus standard (AXI-Stream, Avalon-ST, etc.) — this is a minimal interface sufficient to prove correctness, not a drop-in IP core |
 
@@ -24,12 +24,14 @@ In order of how much it would actually prove, not how easy each is:
    that hardware and those toolchains, neither of which this environment
    has.
 
-## Extending message coverage
+## Extending message coverage further
 
-The RTL's byte-counter/case-statement structure generalizes directly to
-other fixed-layout ITCH messages (OrderCancel, OrderDelete are both
-simpler than AddOrder — fewer fields, shorter total length) by adding a
-`msg_type`-dispatched parallel field map. Not done here because AddOrder
-alone is sufficient to prove the differential-testing methodology works;
-extending coverage is mechanical repetition of that same methodology, not
-a new technique.
+OrderDelete (`rtl/itch_delete_order_parser.v`) already proves the
+methodology generalizes, not just works once: a second, differently-shaped
+real message (19 bytes vs 36, with two genuinely unextracted skip-byte
+fields matching the real parser's own behavior exactly) checked the same
+way, 10,003 more differential comparisons, 0 mismatches. Remaining ITCH
+types (OrderExecuted, OrderCancel, etc.) are the same mechanical
+repetition of this now-twice-proven methodology, not a new technique —
+not done here because two real, structurally different message types is
+sufficient to demonstrate the approach generalizes.
