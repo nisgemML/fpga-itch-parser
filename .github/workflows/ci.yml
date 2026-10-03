@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    name: Lint, smoke test, and the real differential test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install Verilator and Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator iverilog g++
+
+      - name: lint (0 warnings required)
+        run: make lint
+
+      - name: smoke test (Icarus Verilog)
+        run: make smoke
+
+      - name: differential test vs the real C++ parser (Verilator)
+        run: make diff
