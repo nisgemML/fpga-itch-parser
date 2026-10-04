@@ -1,34 +1,21 @@
-.PHONY: lint smoke diff diff-delete all clean
+.PHONY: lint smoke diff all clean
 
-RTL := rtl/itch_add_order_parser.v
-RTL_DELETE := rtl/itch_delete_order_parser.v
-CPP_INC := $(CURDIR)/third_party/udp-multicast-receiver/include
+RTL    := rtl/itch50_parser.v
+ORACLE := tests/data/itch50_oracle.txt
 
 lint:
 	verilator --lint-only -Wall $(RTL)
-	verilator --lint-only -Wall $(RTL_DELETE)
 
 smoke:
-	iverilog -g2012 -o /tmp/itch_smoke_sim $(RTL) sim/smoke_tb.v
-	vvp /tmp/itch_smoke_sim
+	iverilog -g2012 -o /tmp/itch50_smoke_sim $(RTL) sim/smoke_tb.v
+	vvp /tmp/itch50_smoke_sim
 
 diff:
-	mkdir -p build/diff
-	verilator --cc --exe --build -Wall --Mdir build/diff \
-		-CFLAGS "-I$(CPP_INC)" \
-		$(CURDIR)/$(RTL) $(CURDIR)/tests/test_differential.cpp \
-		-o test_differential
-	./build/diff/test_differential
+	mkdir -p build/rtl
+	verilator --cc --exe --build -Wall --Mdir build/rtl $(CURDIR)/$(RTL) $(CURDIR)/tests/test_itch50_rtl.cpp -o test_itch50_rtl
+	./build/rtl/test_itch50_rtl $(ORACLE)
 
-diff-delete:
-	mkdir -p build/diff_delete
-	verilator --cc --exe --build -Wall --Mdir build/diff_delete \
-		-CFLAGS "-I$(CPP_INC)" \
-		$(CURDIR)/$(RTL_DELETE) $(CURDIR)/tests/test_differential_delete.cpp \
-		-o test_differential_delete
-	./build/diff_delete/test_differential_delete
-
-all: lint smoke diff diff-delete
+all: lint smoke diff
 
 clean:
-	rm -rf build /tmp/itch_smoke_sim
+	rm -rf build /tmp/itch50_smoke_sim
