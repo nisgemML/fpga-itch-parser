@@ -117,6 +117,7 @@ int main(int argc, char** argv) {
     std::ifstream in(argv[1]); if (!in) { std::fprintf(stderr, "cannot open %s\n", argv[1]); return 2; }
     std::vector<Case> cases; std::string line;
     while (std::getline(in, line)) if (!line.empty()) cases.push_back(parse_line(line));
+    if (cases.empty()) { std::fprintf(stderr, "no test vectors in %s: refusing to report PASS on nothing\n", argv[1]); return 2; }
     std::map<char, int> per; for (auto& c : cases) ++per[(char)c.expect.type];
 
     auto dut = std::make_unique<Vitch50_parser>();
