@@ -7,15 +7,24 @@ on:
 
 jobs:
   lint-and-test:
-    name: Lint, smoke test, and the real differential test
+    name: Lint, smoke test, and RTL vs the third-party ITCH oracle
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: install Verilator and Icarus Verilog
+      - name: install Verilator, Icarus Verilog, and the oracle
         run: |
           sudo apt-get update
           sudo apt-get install -y verilator iverilog g++
+          pip install -r scripts/requirements.txt
+
+      - name: checked-in oracle vectors are reproducible from the oracle
+        run: |
+          python3 scripts/gen_itch50_oracle.py /tmp/regen
+          cmp /tmp/regen/itch50_oracle.txt tests/data/itch50_oracle.txt
 
       - name: lint (0 warnings required)
         run: make lint
@@ -23,8 +32,5 @@ jobs:
       - name: smoke test (Icarus Verilog)
         run: make smoke
 
-      - name: differential test vs the real C++ parser -- AddOrder (Verilator)
+      - name: RTL vs third-party oracle (Verilator)
         run: make diff
-
-      - name: differential test vs the real C++ parser -- OrderDelete (Verilator)
-        run: make diff-delete

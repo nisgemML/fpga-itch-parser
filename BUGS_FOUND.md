@@ -54,3 +54,14 @@ from prior experimentation in the same session.
 build/diff` before invoking Verilator, rather than relying on it having
 been created by something else earlier. Verified by removing `build/`
 entirely and re-running `make all` from a genuinely clean checkout.
+
+### 4. The RTL parsed the wrong layout — and its 20,006 passing comparisons were real, which is why nobody noticed
+**Symptom:** none. The earlier modules (`itch_add_order_parser.v`, `itch_delete_order_parser.v`) matched the portfolio's C++ parser on 20,006 inputs with 0 mismatches. But that parser reads a *simplified* layout (timestamp at +1, order reference at +7, no stock-locate or tracking fields). The real NASDAQ ITCH 5.0 layout has `locate@1, tracking@3, timestamp@5, order_ref@11` — found while reading the official spec to replay a real NASDAQ file in tick-to-trade (its BUGS_FOUND.md #15). Fed a real message, both the C++ parser and this RTL would have read every field four bytes off.
+**Why the tests couldn't see it:** they compared two implementations of the same wrong assumption. That is a self-consistency check, and it is exactly as strong as the independence between the thing under test and its reference — here, none.
+**Fix:** replaced, not patched. `rtl/itch50_parser.v` decodes the real layout, and the reference is now a third-party implementation (`itchfeed`) whose own `struct` format strings reproduce the spec's message lengths — expected values come out of *its* parser, not out of anything in this repo. The legacy modules and the vendored legacy C++ parser were deleted. Mutation test: pointing Add Order's reference back at the legacy offset (+7) now fails 900 checks.
+**Lesson:** a green differential test across a hardware/software boundary sounds impressive and says nothing about whether both sides were *right* — only that they agreed.
+
+### 5. A test expectation that wasn't independent after all
+**Symptom:** while reviewing the new suite, the expected attribution of the Add Order-with-MPID (`F`) message was a hardcoded constant ("NSDQ", the value the generator packs in), not a value read out of the oracle — the one field in the whole suite whose expectation came from the generator's intent instead of the third-party parser.
+**Fix:** `scripts/gen_itch50_oracle.py` now records `attribution` from the oracle's parser like every other field, the vectors were regenerated, and the test reads it from the vector file. The refactor that let the real-file sampler share one function with the generator was checked to leave the generated data byte-identical.
+**Lesson:** "independent oracle" is a property of every expectation individually, and a suite can be 99% independent and still have one convenient constant in it.
