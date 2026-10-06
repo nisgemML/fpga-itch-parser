@@ -3,7 +3,7 @@
 | Area | Current | Not claimed |
 |------|---------|-------------|
 | Verification | Simulation (Verilator, Icarus Verilog): RTL == third-party `itchfeed` parser on 1,214 vectors x 3 drive modes + framing-error cases (3,648 checks, 0 failures); `scripts/mutate.sh`: 8/8 deliberate RTL bugs caught (1 to 3,644 failing checks each) | Any behaviour on real FPGA hardware — no bitstream loaded, no board |
-| Real data | `scripts/real_to_oracle.py` turns a real NASDAQ file into oracle-checked vectors | **That it has been run.** Today's vectors are generated (random + boundary values), not captured from the exchange |
+| Real data | 200,000 messages sampled across a NASDAQ main-venue day (2020-01-30, 423M messages): 600,006 checks against `itchfeed`, 0 failures (README, "Recorded run on a real file") | Every message of the day: the run checks a 1-in-2,000 sample, and stops after the first 400M supported messages (≥94.5% of the file). Only 8 message types are decoded at all |
 | Message coverage | 8 types: `R A F E C X D U` (the Stock Directory plus every book-affecting message) | The rest of the spec (`S H Y L V W K P Q B I N`): these are framed correctly and reported `msg_known=0`, but not decoded |
 | Framing | Supplied by the transport (`byte_last`), as in real hardware (MoldUDP64, or the 2-byte length prefix in NASDAQ's sample files) | A block that finds message boundaries on its own from the byte stream |
 | Synthesis / timing | Open-source flow (`synth/run_synth.sh`): Yosys + nextpnr-ecp5 on a Lattice ECP5-25F, 1,034 LUT4 + 511 FF, post-route Fmax 137-141 MHz over 3 seeds (`synth/README.md`, including the before/after of two timing fixes) | Vendor sign-off timing (Vivado/Quartus), or any other device family; nextpnr's timing model is an estimate |

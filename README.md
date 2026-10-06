@@ -6,7 +6,8 @@ Order Replace — verified in simulation against an **independent third-party IT
 against code written from the same reading of the spec.
 
 **In 30 seconds**
-- **Spec-exact, independently checked:** decoded fields equal a third-party ITCH parser's on every field of 1,214 messages, driven three ways. That is 3,648 checks, 0 failures.
+- **Real exchange data:** 200,000 messages sampled across a full NASDAQ main-venue day (January 30, 2020: 423 million messages), every field checked against a third-party ITCH parser, driven three ways. That is **600,006 checks, 0 failures**.
+- **Spec-exact on generated edge cases too:** 1,214 random and boundary-value messages, 3,648 checks, 0 failures.
 - **The tests can fail:** `scripts/mutate.sh` injects 8 realistic RTL bugs (wrong offsets, no field clearing, off-by-one lengths). Every one is caught, by 1 to 3,644 failing checks.
 - **It synthesizes and meets a measured clock:** open-source place-and-route on a Lattice ECP5-25F gives 1,034 LUTs and 137–141 MHz. Critical-path analysis and two timing fixes took it from 107–118 MHz ([`synth/README.md`](synth/README.md)).
 - **Honest about scope:** one byte per clock is ~1.1 Gbit/s, a verified decode core, not a 10GbE line-rate design. It has never run on a board.
@@ -26,7 +27,7 @@ misreporting) each fail it, with 1 to 3,644 failures.
 **What this does not prove.**
 - **Synthesized with an open-source flow only.** Yosys + nextpnr-ecp5 place and route it on a Lattice ECP5-25F, for 1,034 LUT4 + 511 FF at 137–141 MHz post-route. That is an estimate from nextpnr's timing model: no vendor sign-off, no bitstream, no board. See [`synth/README.md`](synth/README.md) and [`LIMITATIONS.md`](LIMITATIONS.md).
 - **Not line rate.** One byte per clock is ~1.1 Gbit/s at that clock. 10GbE needs an 8-byte datapath.
-- **The 1,214 vectors are generated** (random and boundary values), not captured from the exchange. `scripts/real_to_oracle.py` samples a *real* NASDAQ file into the same format so the RTL can be checked on actual exchange bytes against the same third-party oracle (below) — **that run has not been done yet.**
+- **Two sets of vectors.** The 1,214 checked-in vectors are generated (random and boundary values). `scripts/real_to_oracle.py` samples a *real* NASDAQ file into the same format, and that run is recorded below: 200,000 real messages, 600,006 checks, 0 failures. The real-file vectors are not checked in, because NASDAQ's file is 5.6 GB and the vectors are its bytes.
 - **8 of NASDAQ's ~20 message types** are decoded; framing (message boundaries) comes from the transport via `byte_last`, as it does in real hardware.
 
 **History worth knowing.** An earlier version of this repo parsed the portfolio's *simplified* layout (no stock-locate/tracking fields), and its "20,006 differential comparisons, 0 mismatches" were real — but between two implementations of the same wrong layout. That's [`BUGS_FOUND.md`](BUGS_FOUND.md) #4; those modules are gone.
@@ -68,7 +69,7 @@ synth/run_synth.sh    # Yosys + nextpnr-ecp5: LUT/FF counts and post-route Fmax 
 
 ```bash
 python3 -m venv ~/venv && ~/venv/bin/pip install -r scripts/requirements.txt     # itchfeed==1.6.4
-~/venv/bin/python scripts/real_to_oracle.py ~/itch/20191230.BX_ITCH_50.gz 100 200000 > /tmp/real_oracle.txt
+~/venv/bin/python scripts/real_to_oracle.py ~/itch/01302020.NASDAQ_ITCH50.gz 2000 200000 > /tmp/real_oracle.txt
 ./build/rtl/test_itch50_rtl /tmp/real_oracle.txt
 ```
 
@@ -78,7 +79,23 @@ them and every expected value read from `itchfeed`'s parser, and runs the same R
 The pipeline itself is checked without a real file: the 1,214 vectors framed as a NASDAQ-format file
 (2-byte big-endian length prefix, gzipped, with interleaved System Event messages the RTL does not decode)
 go through `real_to_oracle.py` and come back byte-identical to `tests/data/itch50_oracle.txt`, and then
-pass all 3,648 checks. The run on a real file is what's still missing.
+pass all 3,648 checks.
+
+**Recorded run on a real file** (WSL2 on an Intel Core Ultra 7 155H, Verilator 5.032):
+
+```
+file:   01302020.NASDAQ_ITCH50.gz   (NASDAQ main venue, 2020-01-30; 5,597,158,940 bytes,
+                                     md5 baa0a7dfbf4384841a01594cd931e5c0; 423,285,709 messages)
+sample: every 2,000th supported message, stopping at 200,000 -> covers the first 400,000,000
+        supported messages, i.e. at least 94.5% of the file: essentially the whole trading day
+        R=4  A=89,042  F=873  E=3,892  C=73  X=2,442  D=86,243  U=17,431
+        0 supported-type messages with a length that is not the spec's
+result: 200000 oracle messages x 3 drive modes + 6 framing cases: 600006 checks, 0 failures
+```
+
+An earlier sample from the same file (every 100th message, also 200,000 vectors) also passed with
+600,006 checks and 0 failures. That sample only reached the first 20 million supported messages
+(roughly the first 5% of the file), so the every-2,000th run above is the one that spans the day.
 
 ## What's in here
 
