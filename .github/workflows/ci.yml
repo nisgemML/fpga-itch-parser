@@ -18,7 +18,7 @@ jobs:
       - name: install Verilator, Icarus Verilog, and the oracle
         run: |
           sudo apt-get update
-          sudo apt-get install -y verilator iverilog g++
+          sudo apt-get install -y verilator iverilog g++ yosys nextpnr-ecp5
           pip install -r scripts/requirements.txt
 
       - name: checked-in oracle vectors are reproducible from the oracle
@@ -34,3 +34,9 @@ jobs:
 
       - name: RTL vs third-party oracle (Verilator)
         run: make diff
+
+      - name: mutation testing (every injected RTL bug must be caught)
+        run: scripts/mutate.sh
+
+      - name: synthesis + place-and-route (ECP5; must complete — Fmax is reported, not gated)
+        run: synth/run_synth.sh

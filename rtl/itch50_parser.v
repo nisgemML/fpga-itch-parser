@@ -71,58 +71,72 @@ module itch50_parser (
     endfunction
 
     reg  [6:0] idx;                                   // index of the incoming byte within its message
-    wire [7:0] cur_type  = (idx == 7'd0) ? byte_in : msg_type;
+    // One-hot copy of idx for bytes 0..39 (pos[k] == (idx == k); all zero past 39, the last field byte). Field enables
+    // like "bytes 20..23" become an OR of 4 bits instead of two 7-bit magnitude compares; after the
+    // len_ok fix below, those compares (idx -> carry chain -> 64-bit clock enables) were the next
+    // critical path. Kept in lockstep with idx: reset/last byte -> bit 0, otherwise shift left.
+    reg  [39:0] pos;
     wire [7:0] total_len = {1'b0, idx} + 8'd1;        // message length if THIS byte is the last
+
+    // The spec length is looked up ONCE, when the type byte arrives, and registered. Previously
+    // the last-byte cycle did: mux(type byte vs stored type) -> 8-way spec_len case -> compare
+    // with idx+1 -> len_ok, which was the critical path after place-and-route (ECP5: ~107-118 MHz,
+    // see synth/README.md). Now that cycle compares two registered values.
+    reg  [7:0] exp_len;                               // spec length of the current message's type
+    // A one-byte message ends on its type byte: no ITCH type is 1 byte long, so len_ok = 0 there,
+    // and msg_known needs only an 8-way compare on byte_in (no length arithmetic).
+    wire       known_now = (spec_len(byte_in) != 8'd0);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            idx <= 7'd0; msg_valid <= 1'b0; msg_known <= 1'b0; len_ok <= 1'b0; msg_type <= 8'd0;
+            idx <= 7'd0; pos <= 40'd1; msg_valid <= 1'b0; msg_known <= 1'b0; len_ok <= 1'b0; msg_type <= 8'd0; exp_len <= 8'd0;
             locate <= 16'd0; tracking <= 16'd0; timestamp_ns <= 48'd0; order_ref <= 64'd0; new_ref <= 64'd0;
             side <= 8'd0; shares <= 32'd0; stock <= 64'd0; price <= 32'd0; match_number <= 64'd0;
             printable <= 8'd0; attribution <= 32'd0;
         end else begin
             msg_valid <= 1'b0;
             if (byte_valid) begin
-                if (idx == 7'd0) begin
+                if (pos[0]) begin
                     msg_type <= byte_in;
+                    exp_len  <= spec_len(byte_in);
                     locate <= 16'd0; tracking <= 16'd0; timestamp_ns <= 48'd0; order_ref <= 64'd0; new_ref <= 64'd0;
                     side <= 8'd0; shares <= 32'd0; stock <= 64'd0; price <= 32'd0; match_number <= 64'd0;
                     printable <= 8'd0; attribution <= 32'd0;
                 end else begin
-                    if (idx == 7'd1 || idx == 7'd2)  locate       <= {locate[7:0], byte_in};
-                    if (idx == 7'd3 || idx == 7'd4)  tracking     <= {tracking[7:0], byte_in};
-                    if (idx >= 7'd5 && idx <= 7'd10) timestamp_ns <= {timestamp_ns[39:0], byte_in};
+                    if (|pos[2:1])  locate       <= {locate[7:0], byte_in};
+                    if (|pos[4:3])  tracking     <= {tracking[7:0], byte_in};
+                    if ((|pos[10:5])) timestamp_ns <= {timestamp_ns[39:0], byte_in};
                     case (msg_type)
                         "R": begin
-                            if (idx >= 7'd11 && idx <= 7'd18) stock <= {stock[55:0], byte_in};
+                            if ((|pos[18:11])) stock <= {stock[55:0], byte_in};
                         end
                         "A", "F": begin
-                            if (idx >= 7'd11 && idx <= 7'd18) order_ref <= {order_ref[55:0], byte_in};
-                            if (idx == 7'd19)                 side      <= byte_in;
-                            if (idx >= 7'd20 && idx <= 7'd23) shares    <= {shares[23:0], byte_in};
-                            if (idx >= 7'd24 && idx <= 7'd31) stock     <= {stock[55:0], byte_in};
-                            if (idx >= 7'd32 && idx <= 7'd35) price     <= {price[23:0], byte_in};
-                            if (msg_type == "F" && idx >= 7'd36 && idx <= 7'd39) attribution <= {attribution[23:0], byte_in};
+                            if ((|pos[18:11])) order_ref <= {order_ref[55:0], byte_in};
+                            if (pos[19])                 side      <= byte_in;
+                            if ((|pos[23:20])) shares    <= {shares[23:0], byte_in};
+                            if ((|pos[31:24])) stock     <= {stock[55:0], byte_in};
+                            if ((|pos[35:32])) price     <= {price[23:0], byte_in};
+                            if (msg_type == "F" && (|pos[39:36])) attribution <= {attribution[23:0], byte_in};
                         end
                         "E", "C": begin
-                            if (idx >= 7'd11 && idx <= 7'd18) order_ref    <= {order_ref[55:0], byte_in};
-                            if (idx >= 7'd19 && idx <= 7'd22) shares       <= {shares[23:0], byte_in};
-                            if (idx >= 7'd23 && idx <= 7'd30) match_number <= {match_number[55:0], byte_in};
-                            if (msg_type == "C" && idx == 7'd31)                 printable <= byte_in;
-                            if (msg_type == "C" && idx >= 7'd32 && idx <= 7'd35) price     <= {price[23:0], byte_in};
+                            if ((|pos[18:11])) order_ref    <= {order_ref[55:0], byte_in};
+                            if ((|pos[22:19])) shares       <= {shares[23:0], byte_in};
+                            if ((|pos[30:23])) match_number <= {match_number[55:0], byte_in};
+                            if (msg_type == "C" && pos[31])                 printable <= byte_in;
+                            if (msg_type == "C" && (|pos[35:32])) price     <= {price[23:0], byte_in};
                         end
                         "X": begin
-                            if (idx >= 7'd11 && idx <= 7'd18) order_ref <= {order_ref[55:0], byte_in};
-                            if (idx >= 7'd19 && idx <= 7'd22) shares    <= {shares[23:0], byte_in};
+                            if ((|pos[18:11])) order_ref <= {order_ref[55:0], byte_in};
+                            if ((|pos[22:19])) shares    <= {shares[23:0], byte_in};
                         end
                         "D": begin
-                            if (idx >= 7'd11 && idx <= 7'd18) order_ref <= {order_ref[55:0], byte_in};
+                            if ((|pos[18:11])) order_ref <= {order_ref[55:0], byte_in};
                         end
                         "U": begin
-                            if (idx >= 7'd11 && idx <= 7'd18) order_ref <= {order_ref[55:0], byte_in};
-                            if (idx >= 7'd19 && idx <= 7'd26) new_ref   <= {new_ref[55:0], byte_in};
-                            if (idx >= 7'd27 && idx <= 7'd30) shares    <= {shares[23:0], byte_in};
-                            if (idx >= 7'd31 && idx <= 7'd34) price     <= {price[23:0], byte_in};
+                            if ((|pos[18:11])) order_ref <= {order_ref[55:0], byte_in};
+                            if ((|pos[26:19])) new_ref   <= {new_ref[55:0], byte_in};
+                            if ((|pos[30:27])) shares    <= {shares[23:0], byte_in};
+                            if ((|pos[34:31])) price     <= {price[23:0], byte_in};
                         end
                         default: ;
                     endcase
@@ -130,11 +144,13 @@ module itch50_parser (
 
                 if (byte_last) begin
                     msg_valid <= 1'b1;
-                    msg_known <= (spec_len(cur_type) != 8'd0);
-                    len_ok    <= (spec_len(cur_type) == total_len);
+                    msg_known <= (idx == 7'd0) ? known_now : (exp_len != 8'd0);
+                    len_ok    <= (idx == 7'd0) ? 1'b0      : (exp_len == total_len);
                     idx       <= 7'd0;
-                end else if (idx != 7'd127) begin
-                    idx <= idx + 7'd1;
+                    pos       <= 40'd1;
+                end else begin
+                    if (idx != 7'd127) idx <= idx + 7'd1;
+                    pos <= {pos[38:0], 1'b0};
                 end
             end
         end
